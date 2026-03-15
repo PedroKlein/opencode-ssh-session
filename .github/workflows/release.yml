@@ -8,7 +8,6 @@ on:
 permissions:
   id-token: write
   contents: write
-  attestations: write
 
 jobs:
   release:
@@ -35,11 +34,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: npm publish --access public
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
