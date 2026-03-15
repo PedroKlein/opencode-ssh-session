@@ -38,6 +38,7 @@ export async function spawnSSH(
 
   try {
     await waitForMarker(state, handshakeId, 30000)
+    state.connectedAt = Date.now()
   } catch (err) {
     try {
       state.proc.kill()
