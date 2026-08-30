@@ -2,6 +2,7 @@ import { tool } from "@opencode-ai/plugin"
 import { executeCommand, isAlive } from "../session/commands"
 import type { SessionManager } from "../session/manager"
 import { withMutex } from "../session/mutex"
+import { shellQuote } from "../session/shell"
 import { authorizeTransfer } from "./permissions"
 
 const DOWNLOAD_TIMEOUT = 120_000
@@ -32,9 +33,10 @@ export function createDownloadTool(sessions: SessionManager) {
 
       return withMutex(state, async () => {
         // Check remote file exists
+        const remotePath = shellQuote(args.remotePath)
         const checkResult = await executeCommand(
           state,
-          `test -f '${args.remotePath}' && echo "EXISTS" || echo "NOT_FOUND"`,
+          `test -f ${remotePath} && echo "EXISTS" || echo "NOT_FOUND"`,
           DOWNLOAD_TIMEOUT,
         )
         if (checkResult.trim() === "NOT_FOUND") {
@@ -42,11 +44,7 @@ export function createDownloadTool(sessions: SessionManager) {
         }
 
         // Base64-encode on remote and capture output
-        const b64Result = await executeCommand(
-          state,
-          `base64 '${args.remotePath}'`,
-          DOWNLOAD_TIMEOUT,
-        )
+        const b64Result = await executeCommand(state, `base64 < ${remotePath}`, DOWNLOAD_TIMEOUT)
         if (b64Result.includes("[exit code:")) {
           return `Failed to read remote file: ${b64Result}`
         }

@@ -51,11 +51,12 @@ def terminate(_signum, _frame):
 signal.signal(signal.SIGTERM, terminate)
 with open(${JSON.stringify(spawnLog)}, "a", encoding="utf-8") as log:
     log.write(host + "\\n")
-command = ""
+command_lines = []
 for line in sys.stdin:
     line = line.rstrip("\\n")
     marker = re.search(r"<<__OC_SSH_DONE__([a-z0-9]+)_", line)
     if marker:
+        command = re.sub(r" 2>&1$", "", "\\n".join(command_lines))
         with open(${JSON.stringify(commandLog)}, "a", encoding="utf-8") as log:
             log.write(host + "\\t" + command + "\\n")
         if command == "block" or (command == "true" and host == "slow-connect"):
@@ -63,17 +64,14 @@ for line in sys.stdin:
                 time.sleep(1)
         if command == "close":
             sys.exit(0)
-        if sys.platform == "darwin":
-            command = re.sub(r"^base64 -d ([^ ]+)", r"base64 -D -i \\1", command)
-            command = re.sub(r"^base64 ('[^']*')$", r"base64 -i \\1", command)
         result = subprocess.run(command, shell=True, text=True, capture_output=True)
         sys.stdout.write(result.stdout)
         sys.stdout.write(result.stderr)
         sys.stdout.write(f"<<__OC_SSH_DONE__{marker.group(1)}_{result.returncode}>>\\n")
         sys.stdout.flush()
-        command = ""
+        command_lines = []
     else:
-        command = re.sub(r" 2>&1$", "", line)
+        command_lines.append(line)
 `,
   )
   await chmod(executable, 0o755)

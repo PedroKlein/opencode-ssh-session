@@ -2,6 +2,7 @@ import { tool } from "@opencode-ai/plugin"
 import { executeCommand, isAlive } from "../session/commands"
 import type { SessionManager } from "../session/manager"
 import { withMutex } from "../session/mutex"
+import { shellQuote } from "../session/shell"
 import { authorizeTransfer } from "./permissions"
 
 const UPLOAD_TIMEOUT = 120_000
@@ -48,7 +49,8 @@ export function createUploadTool(sessions: SessionManager) {
       return withMutex(state, async () => {
         // Write base64 chunks to a temp file, then decode
         const tmpFile = `/tmp/.oc_upload_${Date.now()}`
-        const initResult = await executeCommand(state, `> ${tmpFile}`, UPLOAD_TIMEOUT)
+        const quotedTmpFile = shellQuote(tmpFile)
+        const initResult = await executeCommand(state, `> ${quotedTmpFile}`, UPLOAD_TIMEOUT)
         if (initResult.includes("[exit code:")) {
           return `Failed to create temp file on remote: ${initResult}`
         }
@@ -56,20 +58,20 @@ export function createUploadTool(sessions: SessionManager) {
         for (const chunk of chunks) {
           const result = await executeCommand(
             state,
-            `printf '%s' '${chunk}' >> ${tmpFile}`,
+            `printf '%s' '${chunk}' >> ${quotedTmpFile}`,
             UPLOAD_TIMEOUT,
           )
           if (result.includes("[exit code:")) {
-            await executeCommand(state, `rm -f ${tmpFile}`, UPLOAD_TIMEOUT)
+            await executeCommand(state, `rm -f ${quotedTmpFile}`, UPLOAD_TIMEOUT)
             return `Failed to write chunk to remote: ${result}`
           }
         }
 
         // Decode and move to final destination
-        const decodeCmd = `base64 -d ${tmpFile} > '${args.remotePath}' && rm -f ${tmpFile}`
+        const decodeCmd = `base64 -d < ${quotedTmpFile} > ${shellQuote(args.remotePath)} && rm -f ${quotedTmpFile}`
         const decodeResult = await executeCommand(state, decodeCmd, UPLOAD_TIMEOUT)
         if (decodeResult.includes("[exit code:")) {
-          await executeCommand(state, `rm -f ${tmpFile}`, UPLOAD_TIMEOUT)
+          await executeCommand(state, `rm -f ${quotedTmpFile}`, UPLOAD_TIMEOUT)
           return `Failed to decode file on remote: ${decodeResult}`
         }
 
