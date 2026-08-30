@@ -18,6 +18,7 @@ export function toolContext(sessionID: string): ToolContext {
 
 export interface FakeSSH {
   cleanup(): Promise<void>
+  commands(): Promise<string[]>
   exits(): Promise<string[]>
   spawns(): Promise<string[]>
 }
@@ -25,6 +26,7 @@ export interface FakeSSH {
 export async function installFakeSSH(): Promise<FakeSSH> {
   const directory = await mkdtemp(join(tmpdir(), "opencode-ssh-test-"))
   const executable = join(directory, "ssh")
+  const commandLog = join(directory, "commands")
   const exitLog = join(directory, "exits")
   const spawnLog = join(directory, "spawns")
 
@@ -54,6 +56,8 @@ for line in sys.stdin:
     line = line.rstrip("\\n")
     marker = re.search(r"<<__OC_SSH_DONE__([a-z0-9]+)_", line)
     if marker:
+        with open(${JSON.stringify(commandLog)}, "a", encoding="utf-8") as log:
+            log.write(host + "\\t" + command + "\\n")
         if command == "block" or (command == "true" and host == "slow-connect"):
             while True:
                 time.sleep(1)
@@ -84,6 +88,10 @@ for line in sys.stdin:
     async cleanup() {
       mutableBun.spawn = originalSpawn
       await rm(directory, { recursive: true, force: true })
+    },
+    async commands() {
+      const contents = await readFile(commandLog, "utf8").catch(() => "")
+      return contents.split("\n").filter(Boolean)
     },
     async exits() {
       const contents = await readFile(exitLog, "utf8").catch(() => "")
