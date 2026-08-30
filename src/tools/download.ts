@@ -2,6 +2,7 @@ import { tool } from "@opencode-ai/plugin"
 import { executeCommand, isAlive } from "../session/commands"
 import type { SessionManager } from "../session/manager"
 import { withMutex } from "../session/mutex"
+import { authorizeTransfer } from "./permissions"
 
 const DOWNLOAD_TIMEOUT = 120_000
 
@@ -17,9 +18,17 @@ export function createDownloadTool(sessions: SessionManager) {
     },
     async execute(args, context) {
       const state = sessions.get(context.sessionID)
-      if (!isAlive(state)) {
+      if (!isAlive(state) || !state.host) {
         return "No active SSH session. Use ssh_connect to establish a connection first."
       }
+
+      const localPath = await authorizeTransfer(context, {
+        host: state.host,
+        localPath: args.localPath,
+        localPermission: "edit",
+        remotePath: args.remotePath,
+        remotePermission: "read",
+      })
 
       return withMutex(state, async () => {
         // Check remote file exists
@@ -46,7 +55,7 @@ export function createDownloadTool(sessions: SessionManager) {
         const cleaned = b64Result.replace(/\s/g, "")
         const bytes = Buffer.from(cleaned, "base64")
 
-        await Bun.write(args.localPath, bytes)
+        await Bun.write(localPath, bytes)
 
         return `Downloaded ${state.host}:${args.remotePath} to ${args.localPath} (${bytes.byteLength} bytes)`
       })

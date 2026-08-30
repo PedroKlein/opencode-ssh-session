@@ -2,6 +2,7 @@ import { tool } from "@opencode-ai/plugin"
 import { executeCommand, isAlive } from "../session/commands"
 import type { SessionManager } from "../session/manager"
 import { withMutex } from "../session/mutex"
+import { authorizeTransfer } from "./permissions"
 
 const UPLOAD_TIMEOUT = 120_000
 
@@ -17,11 +18,18 @@ export function createUploadTool(sessions: SessionManager) {
     },
     async execute(args, context) {
       const state = sessions.get(context.sessionID)
-      if (!isAlive(state)) {
+      if (!isAlive(state) || !state.host) {
         return "No active SSH session. Use ssh_connect to establish a connection first."
       }
 
-      const file = Bun.file(args.localPath)
+      const localPath = await authorizeTransfer(context, {
+        host: state.host,
+        localPath: args.localPath,
+        localPermission: "read",
+        remotePath: args.remotePath,
+        remotePermission: "edit",
+      })
+      const file = Bun.file(localPath)
       const exists = await file.exists()
       if (!exists) {
         return `Local file not found: ${args.localPath}`

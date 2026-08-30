@@ -63,6 +63,9 @@ for line in sys.stdin:
                 time.sleep(1)
         if command == "close":
             sys.exit(0)
+        if sys.platform == "darwin":
+            command = re.sub(r"^base64 -d ([^ ]+)", r"base64 -D -i \\1", command)
+            command = re.sub(r"^base64 ('[^']*')$", r"base64 -i \\1", command)
         result = subprocess.run(command, shell=True, text=True, capture_output=True)
         sys.stdout.write(result.stdout)
         sys.stdout.write(result.stderr)
