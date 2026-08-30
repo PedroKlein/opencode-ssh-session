@@ -1,5 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { createBashGuard } from "./hooks/bash-guard"
+import { configurePermissions } from "./hooks/config"
 import { createSessionEvents } from "./hooks/session-events"
 import { createSessionManager } from "./session/manager"
 import { createConnectTool } from "./tools/connect"
@@ -22,6 +23,7 @@ export const SSHSession: Plugin = async () => {
       ssh_download: createDownloadTool(sessions),
     },
     event: createSessionEvents(sessions),
+    config: configurePermissions,
     "tool.execute.before": createBashGuard(sessions),
     async dispose() {
       sessions.dispose()

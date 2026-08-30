@@ -3,6 +3,7 @@ export interface SessionState {
   host: string | null
   connectedAt: number | null
   buffer: string
+  stderr: string
   pendingResolve: ((result: { output: string; exitCode: number }) => void) | null
   pendingReject: ((error: Error) => void) | null
   currentMarkerId: string
@@ -17,6 +18,7 @@ export function createState(): SessionState {
     host: null,
     connectedAt: null,
     buffer: "",
+    stderr: "",
     pendingResolve: null,
     pendingReject: null,
     currentMarkerId: "",

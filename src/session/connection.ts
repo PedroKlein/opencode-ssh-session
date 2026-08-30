@@ -1,5 +1,5 @@
 import { sendMarkerCommand, waitForMarker } from "./commands"
-import { startReader } from "./reader"
+import { startErrorReader, startReader } from "./reader"
 import type { SessionState } from "./state"
 
 /**
@@ -11,7 +11,18 @@ export async function spawnSSH(
   options?: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const sshArgs = ["ssh", "-T", "-o", "ServerAliveInterval=60", "-o", "ServerAliveCountMax=3"]
+  const sshArgs = [
+    "ssh",
+    "-T",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "ServerAliveInterval=60",
+    "-o",
+    "ServerAliveCountMax=3",
+  ]
 
   if (options) {
     const extra = options.trim().split(/\s+/)
@@ -31,9 +42,10 @@ export async function spawnSSH(
   })
   state.host = host
   state.buffer = ""
+  state.stderr = ""
   state.readerDone = false
 
-  // start background reader
+  const stderrDone = startErrorReader(state, state.proc.stderr as ReadableStream<Uint8Array>)
   startReader(state, state.proc.stdout as ReadableStream<Uint8Array>)
 
   // initial handshake: consume any MOTD/banner
@@ -45,7 +57,8 @@ export async function spawnSSH(
     state.connectedAt = Date.now()
   } catch (err) {
     killSSH(state)
-    const errorMsg = err instanceof Error ? err.message : String(err)
+    await stderrDone
+    const errorMsg = state.stderr.trim() || (err instanceof Error ? err.message : String(err))
     throw new Error(`Failed to establish SSH session to ${host}: ${errorMsg}`)
   }
 

@@ -1,9 +1,6 @@
 import { markerRegex } from "./marker"
 import type { SessionState } from "./state"
 
-/**
- * Check the buffer for a completed command marker and resolve any pending promise.
- */
 export function checkBuffer(state: SessionState): void {
   if (!state.currentMarkerId || !state.pendingResolve) return
 
@@ -13,19 +10,29 @@ export function checkBuffer(state: SessionState): void {
     const markerIndex = state.buffer.indexOf(match[0])
     const output = state.buffer.substring(0, markerIndex)
     state.buffer = state.buffer.substring(markerIndex + match[0].length)
-
     const exitCode = parseInt(match[1], 10)
-    const resolve = state.pendingResolve
-    state.pendingResolve = null
-    state.pendingReject = null
-    state.currentMarkerId = ""
-    resolve({ output: output.trim(), exitCode })
+    state.pendingResolve({ output: output.trim(), exitCode })
   }
 }
 
-/**
- * Start a background reader that consumes stdout and feeds the buffer.
- */
+export async function startErrorReader(
+  state: SessionState,
+  stream: ReadableStream<Uint8Array>,
+): Promise<void> {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      state.stderr = (state.stderr + decoder.decode(value, { stream: true })).slice(-65_536)
+    }
+  } catch {
+    // stream closed or errored
+  }
+}
+
 export async function startReader(
   state: SessionState,
   stream: ReadableStream<Uint8Array>,
@@ -44,12 +51,6 @@ export async function startReader(
     // stream closed or errored
   } finally {
     state.readerDone = true
-    if (state.pendingReject) {
-      const reject = state.pendingReject
-      state.pendingResolve = null
-      state.pendingReject = null
-      state.currentMarkerId = ""
-      reject(new Error("SSH connection dropped while waiting for command output."))
-    }
+    state.pendingReject?.(new Error("SSH connection dropped while waiting for command output."))
   }
 }

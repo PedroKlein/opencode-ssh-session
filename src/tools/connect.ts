@@ -26,6 +26,13 @@ export function createConnectTool(sessions: SessionManager) {
         return `Already connected to ${args.host}.`
       }
 
+      await context.ask({
+        permission: "ssh_connect",
+        patterns: [args.host],
+        always: [args.host],
+        metadata: { host: args.host },
+      })
+
       if (isAlive(state)) {
         state = sessions.replace(context.sessionID)
       }

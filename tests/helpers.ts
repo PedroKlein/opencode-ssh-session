@@ -17,6 +17,7 @@ export function toolContext(sessionID: string): ToolContext {
 }
 
 export interface FakeSSH {
+  arguments(): Promise<string[][]>
   cleanup(): Promise<void>
   commands(): Promise<string[]>
   exits(): Promise<string[]>
@@ -26,6 +27,7 @@ export interface FakeSSH {
 export async function installFakeSSH(): Promise<FakeSSH> {
   const directory = await mkdtemp(join(tmpdir(), "opencode-ssh-test-"))
   const executable = join(directory, "ssh")
+  const argumentsLog = join(directory, "arguments")
   const commandLog = join(directory, "commands")
   const exitLog = join(directory, "exits")
   const spawnLog = join(directory, "spawns")
@@ -38,10 +40,13 @@ import signal
 import subprocess
 import sys
 import time
+import json
 
 args = sys.argv[1:]
 shell_index = len(args) - 2
 host = args[shell_index - 1]
+with open(${JSON.stringify(argumentsLog)}, "a", encoding="utf-8") as log:
+    log.write(json.dumps(args) + "\\n")
 
 def terminate(_signum, _frame):
     with open(${JSON.stringify(exitLog)}, "a", encoding="utf-8") as log:
@@ -51,6 +56,14 @@ def terminate(_signum, _frame):
 signal.signal(signal.SIGTERM, terminate)
 with open(${JSON.stringify(spawnLog)}, "a", encoding="utf-8") as log:
     log.write(host + "\\n")
+if host == "stderr-host":
+    sys.stderr.write("Permission denied (publickey).\\n")
+    sys.stderr.flush()
+    sys.exit(255)
+if host == "changed-key-host":
+    sys.stderr.write("REMOTE HOST IDENTIFICATION HAS CHANGED!\\nHost key verification failed.\\n")
+    sys.stderr.flush()
+    sys.exit(255)
 command_lines = []
 for line in sys.stdin:
     line = line.rstrip("\\n")
@@ -86,6 +99,13 @@ for line in sys.stdin:
   mutableBun.spawn = spawn
 
   return {
+    async arguments() {
+      const contents = await readFile(argumentsLog, "utf8").catch(() => "")
+      return contents
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as string[])
+    },
     async cleanup() {
       mutableBun.spawn = originalSpawn
       await rm(directory, { recursive: true, force: true })
