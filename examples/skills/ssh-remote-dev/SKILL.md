@@ -31,17 +31,29 @@ Load this skill when you need to:
 ## Connection management
 
 - Always check with `ssh_info` before assuming a session exists
-- Connect once and reuse — the session preserves `cd`, exported variables, and shell state
-- Disconnect when done to avoid orphaned SSH processes
-- If a command times out or the connection drops, reconnect with `ssh_connect`
+- Each OpenCode session has an independent SSH connection
+- Connect once and reuse the connection to preserve `cd`, exported variables, and shell state
+- Connection approval uses the `ssh_connect` permission
+- First-time host keys use OpenSSH `accept-new`; changed keys are rejected
+- Password, passphrase, and keyboard-interactive authentication are unsupported; use key-based authentication or an SSH agent
+- Disconnect when done to release the SSH process
+- If a command is aborted, times out, or loses its stream, reconnect with `ssh_connect`
+
+## Permission behavior
+
+- Remote commands use the native `bash` permission with the exact command as the resource
+- Uploads request `read` for the local source and `edit` for the remote destination
+- Downloads request `read` for the remote source and `edit` for the local destination
+- Local paths outside the worktree also request `external_directory`
+- If a permission is denied, report the denial and stop; do not retry through `bash`, `scp`, `sftp`, or `rsync`
 
 ## Command execution rules
 
 - **Never run interactive commands**: `vim`, `nano`, `top`, `htop`, `less`, `more`, `man`, `ssh` (nested)
 - **Use non-interactive alternatives**: `cat` instead of `less`, `ps aux` instead of `top`, `sed`/`awk` instead of `vim`
-- **Long-running commands**: use the `timeout` parameter or background with `nohup cmd &`
-- **Multiple commands**: chain with `&&` or `;` in a single `ssh` call to reduce round trips
-- **Error handling**: check exit codes — non-zero codes are reported in the output
+- **Long-running commands**: set the `timeout` parameter or use `nohup` when the process must outlive the SSH session
+- **Multiple commands**: chain with `&&` or `;` in one `ssh` call when they require shared shell state
+- **Error handling**: non-zero exit codes are included in tool output
 
 ## File transfer patterns
 

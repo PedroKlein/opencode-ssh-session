@@ -14,6 +14,48 @@ Add the plugin to your OpenCode configuration (`opencode.json`):
 
 OpenCode will automatically install the package via Bun at startup.
 
+## Permissions
+
+The plugin uses OpenCode's native permission system before connecting, running remote commands, or transferring files. Connection approval defaults to `ask`; an explicit user setting overrides that default.
+
+```json
+{
+  "permission": {
+    "ssh_connect": {
+      "*": "ask",
+      "dev-*": "allow",
+      "production": "deny"
+    },
+    "bash": {
+      "*": "ask",
+      "git status": "allow",
+      "git diff *": "allow"
+    },
+    "read": "allow",
+    "edit": "ask",
+    "external_directory": "ask"
+  }
+}
+```
+
+Permission mapping:
+
+| Operation | Permission | Resource |
+| --------- | ---------- | -------- |
+| Connect | `ssh_connect` | SSH host |
+| Run a command | `bash` | Exact remote command |
+| Upload | `read`, then `edit` | Resolved local source, then `host:remotePath` |
+| Download | `read`, then `edit` | `host:remotePath`, then resolved local destination |
+| Access outside the worktree | `external_directory` | Resolved local path |
+
+Rejecting a permission prevents the associated SSH or filesystem operation. Remote commands use the same `bash` rules as local shell commands, including agent-specific rules.
+
+## Host verification
+
+`ssh_connect` runs OpenSSH non-interactively. After connection approval, OpenSSH uses `StrictHostKeyChecking=accept-new`: first-time host keys are added to the user's normal known-hosts database, while changed host keys are rejected. The plugin does not bypass changed-key warnings.
+
+Password, passphrase, keyboard-interactive, and other terminal prompts are not supported. Configure key-based authentication or an SSH agent before connecting. Connection errors include OpenSSH's stderr output.
+
 ## Tools
 
 The plugin registers six tools:
@@ -103,16 +145,18 @@ The skill teaches the AI patterns for deployments, debugging remote services, fi
 
 ## How It Works
 
-The plugin spawns a single `ssh` child process per session and communicates with it via stdin/stdout using unique markers to delimit command output. This avoids reconnection overhead and preserves shell state between commands.
+The plugin spawns at most one `ssh` child process for each OpenCode session and communicates with it through stdin/stdout using unique markers to delimit command output. This avoids reconnection overhead and preserves shell state between commands.
 
-- Commands are non-interactive only (no `vim`, `top`, etc.)
-- A mutex ensures only one command runs at a time
+- Commands are non-interactive only (no `vim`, `top`, password prompts, etc.)
+- Commands within a session execute one at a time
+- Aborting or timing out `ssh_connect` or `ssh` closes that session's SSH connection
 - File transfers use base64 encoding over the existing connection
-- The session is automatically cleaned up on disconnect or error
+- Remote paths are shell-quoted before transfer commands run
+- Session deletion, errors, and plugin shutdown clean up their associated SSH processes
 
 ## Requirements
 
-- OpenCode with plugin support (`@opencode-ai/plugin >= 1.0.0`)
+- OpenCode with plugin support (`@opencode-ai/plugin >= 1.18.25`)
 - `ssh` available on the host machine's `PATH`
 
 ## License
