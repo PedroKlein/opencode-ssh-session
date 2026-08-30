@@ -1,11 +1,11 @@
 import { tool } from "@opencode-ai/plugin"
 import { executeCommand } from "../session/commands"
+import type { SessionManager } from "../session/manager"
 import { withMutex } from "../session/mutex"
-import type { SessionState } from "../session/state"
 
 const DEFAULT_TIMEOUT = 120_000
 
-export function createExecuteTool(state: SessionState) {
+export function createExecuteTool(sessions: SessionManager) {
   return tool({
     description:
       "Execute a command on the active persistent SSH session. " +
@@ -19,7 +19,8 @@ export function createExecuteTool(state: SessionState) {
         .optional()
         .describe("Timeout in milliseconds (default: 120000 = 2 minutes)"),
     },
-    async execute(args) {
+    async execute(args, context) {
+      const state = sessions.get(context.sessionID)
       return withMutex(state, () =>
         executeCommand(state, args.command, args.timeout ?? DEFAULT_TIMEOUT),
       )

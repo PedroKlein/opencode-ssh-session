@@ -1,11 +1,11 @@
 import { tool } from "@opencode-ai/plugin"
 import { executeCommand, isAlive } from "../session/commands"
+import type { SessionManager } from "../session/manager"
 import { withMutex } from "../session/mutex"
-import type { SessionState } from "../session/state"
 
 const UPLOAD_TIMEOUT = 120_000
 
-export function createUploadTool(state: SessionState) {
+export function createUploadTool(sessions: SessionManager) {
   return tool({
     description:
       "Upload a local file to the remote host through the active SSH session. " +
@@ -15,7 +15,8 @@ export function createUploadTool(state: SessionState) {
       localPath: tool.schema.string().describe("Absolute path to the local file to upload"),
       remotePath: tool.schema.string().describe("Destination path on the remote host"),
     },
-    async execute(args) {
+    async execute(args, context) {
+      const state = sessions.get(context.sessionID)
       if (!isAlive(state)) {
         return "No active SSH session. Use ssh_connect to establish a connection first."
       }

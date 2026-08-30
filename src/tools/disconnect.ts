@@ -1,15 +1,14 @@
 import { tool } from "@opencode-ai/plugin"
-import { killSSH } from "../session/connection"
-import type { SessionState } from "../session/state"
+import type { SessionManager } from "../session/manager"
 
-export function createDisconnectTool(state: SessionState) {
+export function createDisconnectTool(sessions: SessionManager) {
   return tool({
     description:
       "Close the active persistent SSH session. " +
       "Shell state is lost. You can reconnect later with ssh_connect.",
     args: {},
-    async execute() {
-      return killSSH(state)
+    async execute(_args, context) {
+      return sessions.remove(context.sessionID)
     },
   })
 }

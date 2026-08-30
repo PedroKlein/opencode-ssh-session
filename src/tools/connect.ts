@@ -1,10 +1,10 @@
 import { tool } from "@opencode-ai/plugin"
 import { isAlive } from "../session/commands"
-import { killSSH, spawnSSH } from "../session/connection"
+import { spawnSSH } from "../session/connection"
+import type { SessionManager } from "../session/manager"
 import { withMutex } from "../session/mutex"
-import type { SessionState } from "../session/state"
 
-export function createConnectTool(state: SessionState) {
+export function createConnectTool(sessions: SessionManager) {
   return tool({
     description:
       "Open a persistent SSH session to a remote host. " +
@@ -20,13 +20,14 @@ export function createConnectTool(state: SessionState) {
         .optional()
         .describe("Extra SSH flags (e.g. '-p 2222', '-i ~/.ssh/mykey')"),
     },
-    async execute(args) {
+    async execute(args, context) {
+      let state = sessions.get(context.sessionID)
       if (isAlive(state) && state.host === args.host) {
         return `Already connected to ${args.host}.`
       }
 
-      if (isAlive(state) && state.host !== args.host) {
-        killSSH(state)
+      if (isAlive(state)) {
+        state = sessions.replace(context.sessionID)
       }
 
       return withMutex(state, () => spawnSSH(state, args.host, args.options))

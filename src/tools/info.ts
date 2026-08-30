@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
 import { isAlive } from "../session/commands"
-import type { SessionState } from "../session/state"
+import type { SessionManager } from "../session/manager"
 
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000)
@@ -11,15 +11,16 @@ function formatDuration(ms: number): string {
   return `${hours}h ${minutes % 60}m`
 }
 
-export function createInfoTool(state: SessionState) {
+export function createInfoTool(sessions: SessionManager) {
   return tool({
     description:
       "Get information about the current SSH session. " +
       "Returns the connected host, session duration, and whether the session is alive. " +
       "Use this to check connection status before running commands.",
     args: {},
-    async execute() {
-      if (!isAlive(state) || !state.host) {
+    async execute(_args, context) {
+      const state = sessions.peek(context.sessionID)
+      if (!state || !isAlive(state) || !state.host) {
         return "No active SSH session."
       }
 

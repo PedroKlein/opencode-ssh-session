@@ -1,11 +1,11 @@
 import { tool } from "@opencode-ai/plugin"
 import { executeCommand, isAlive } from "../session/commands"
+import type { SessionManager } from "../session/manager"
 import { withMutex } from "../session/mutex"
-import type { SessionState } from "../session/state"
 
 const DOWNLOAD_TIMEOUT = 120_000
 
-export function createDownloadTool(state: SessionState) {
+export function createDownloadTool(sessions: SessionManager) {
   return tool({
     description:
       "Download a file from the remote host to the local machine through the active SSH session. " +
@@ -15,7 +15,8 @@ export function createDownloadTool(state: SessionState) {
       remotePath: tool.schema.string().describe("Path to the file on the remote host"),
       localPath: tool.schema.string().describe("Destination path on the local machine"),
     },
-    async execute(args) {
+    async execute(args, context) {
+      const state = sessions.get(context.sessionID)
       if (!isAlive(state)) {
         return "No active SSH session. Use ssh_connect to establish a connection first."
       }

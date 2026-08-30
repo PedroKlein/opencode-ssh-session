@@ -78,6 +78,6 @@ export async function executeCommand(
 /**
  * Check if the SSH process is alive.
  */
-export function isAlive(state: SessionState): boolean {
-  return state.proc !== null && !state.readerDone
+export function isAlive(state: SessionState | undefined): boolean {
+  return state?.proc != null && !state.readerDone
 }
