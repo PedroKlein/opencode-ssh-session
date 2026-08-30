@@ -30,7 +30,12 @@ export function createConnectTool(sessions: SessionManager) {
         state = sessions.replace(context.sessionID)
       }
 
-      return withMutex(state, () => spawnSSH(state, args.host, args.options))
+      try {
+        return await withMutex(state, () => spawnSSH(state, args.host, args.options, context.abort))
+      } catch (error) {
+        sessions.remove(context.sessionID)
+        throw error
+      }
     },
   })
 }

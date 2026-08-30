@@ -20,35 +20,48 @@ export async function waitForMarker(
   state: SessionState,
   id: string,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<{ output: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
+    let settled = false
+    let timer: ReturnType<typeof setTimeout>
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener("abort", onAbort)
+      if (state.currentMarkerId !== id) return
+      state.pendingResolve = null
+      state.pendingReject = null
+      state.currentMarkerId = ""
+    }
+    const complete =
+      <T>(callback: (value: T) => void) =>
+      (value: T) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        callback(value)
+      }
+    const onAbort = () => {
+      const reason = signal?.reason
+      complete(reject)(reason instanceof Error ? reason : new Error("SSH operation aborted."))
+    }
+
     state.currentMarkerId = id
-    state.pendingResolve = resolve
-    state.pendingReject = reject
-
-    // check immediately in case it's already in the buffer
-    checkBuffer(state)
-
-    const timer = setTimeout(() => {
+    state.pendingResolve = complete(resolve)
+    state.pendingReject = complete(reject)
+    timer = setTimeout(() => {
       if (state.currentMarkerId === id) {
-        state.pendingResolve = null
-        state.pendingReject = null
-        state.currentMarkerId = ""
-        reject(new Error(`Command timed out after ${timeout}ms`))
+        state.pendingReject?.(new Error(`Command timed out after ${timeout}ms`))
       }
     }, timeout)
+    signal?.addEventListener("abort", onAbort, { once: true })
 
-    // wrap the original resolve/reject to clear the timer
-    const origResolve = state.pendingResolve
-    state.pendingResolve = (result) => {
-      clearTimeout(timer)
-      origResolve?.(result)
+    if (signal?.aborted) {
+      onAbort()
+      return
     }
-    const origReject = state.pendingReject
-    state.pendingReject = (err) => {
-      clearTimeout(timer)
-      origReject?.(err)
-    }
+    checkBuffer(state)
   })
 }
 
@@ -59,15 +72,19 @@ export async function executeCommand(
   state: SessionState,
   command: string,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<string> {
   if (!isAlive(state)) {
     return "No active SSH session. Use ssh_connect to establish a connection first."
+  }
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : new Error("SSH operation aborted.")
   }
 
   const id = Math.random().toString(36).substring(2, 10)
   sendMarkerCommand(state, command, id)
 
-  const result = await waitForMarker(state, id, timeout)
+  const result = await waitForMarker(state, id, timeout, signal)
 
   if (result.exitCode !== 0) {
     return `${result.output}\n[exit code: ${result.exitCode}]`

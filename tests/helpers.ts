@@ -19,12 +19,14 @@ export function toolContext(sessionID: string): ToolContext {
 export interface FakeSSH {
   cleanup(): Promise<void>
   exits(): Promise<string[]>
+  spawns(): Promise<string[]>
 }
 
 export async function installFakeSSH(): Promise<FakeSSH> {
   const directory = await mkdtemp(join(tmpdir(), "opencode-ssh-test-"))
   const executable = join(directory, "ssh")
   const exitLog = join(directory, "exits")
+  const spawnLog = join(directory, "spawns")
 
   await writeFile(
     executable,
@@ -33,6 +35,7 @@ import re
 import signal
 import subprocess
 import sys
+import time
 
 args = sys.argv[1:]
 shell_index = len(args) - 2
@@ -44,11 +47,18 @@ def terminate(_signum, _frame):
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, terminate)
+with open(${JSON.stringify(spawnLog)}, "a", encoding="utf-8") as log:
+    log.write(host + "\\n")
 command = ""
 for line in sys.stdin:
     line = line.rstrip("\\n")
     marker = re.search(r"<<__OC_SSH_DONE__([a-z0-9]+)_", line)
     if marker:
+        if command == "block" or (command == "true" and host == "slow-connect"):
+            while True:
+                time.sleep(1)
+        if command == "close":
+            sys.exit(0)
         result = subprocess.run(command, shell=True, text=True, capture_output=True)
         sys.stdout.write(result.stdout)
         sys.stdout.write(result.stderr)
@@ -77,6 +87,10 @@ for line in sys.stdin:
     },
     async exits() {
       const contents = await readFile(exitLog, "utf8").catch(() => "")
+      return contents.split("\n").filter(Boolean)
+    },
+    async spawns() {
+      const contents = await readFile(spawnLog, "utf8").catch(() => "")
       return contents.split("\n").filter(Boolean)
     },
   }

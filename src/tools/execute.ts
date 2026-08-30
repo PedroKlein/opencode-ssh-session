@@ -21,9 +21,14 @@ export function createExecuteTool(sessions: SessionManager) {
     },
     async execute(args, context) {
       const state = sessions.get(context.sessionID)
-      return withMutex(state, () =>
-        executeCommand(state, args.command, args.timeout ?? DEFAULT_TIMEOUT),
-      )
+      try {
+        return await withMutex(state, () =>
+          executeCommand(state, args.command, args.timeout ?? DEFAULT_TIMEOUT, context.abort),
+        )
+      } catch (error) {
+        sessions.remove(context.sessionID)
+        throw error
+      }
     },
   })
 }
