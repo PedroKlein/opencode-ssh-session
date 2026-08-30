@@ -86,7 +86,7 @@ No parameters.
 
 ### `ssh_info`
 
-Get information about the current SSH session — connected host, duration, and whether a command is running.
+Get the connected host, session duration, and command status for the current SSH session.
 
 No parameters.
 

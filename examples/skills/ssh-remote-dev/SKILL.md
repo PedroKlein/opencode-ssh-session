@@ -1,96 +1,97 @@
 ---
 name: ssh-remote-dev
-description: Best practices for remote development and server management over SSH using the opencode-ssh-session plugin
+description: >
+  Operate persistent remote shells with the opencode-ssh-session tools. Use when connecting to an
+  SSH host, running remote commands, transferring files, deploying, or diagnosing a denied, timed
+  out, or dropped remote session. Triggers on: ssh_connect, ssh, ssh_info, ssh_upload, ssh_download,
+  remote server, deployment, remote debugging. Do NOT use for local shell work or interactive
+  terminal programs.
 license: MIT
 metadata:
   audience: developers
   workflow: remote-development
 ---
 
-## What I do
+# SSH remote development
 
-Provide guidance on effective remote development patterns using the SSH session plugin tools. I help you work efficiently with remote servers while avoiding common pitfalls.
+Treat each OpenCode session as owning one remote shell. Shell state persists only while that SSH
+connection remains alive.
 
-## Available tools
+## Route the operation
 
-- `ssh_connect` — Open a persistent connection to a remote host
-- `ssh` — Run commands on the active session (shell state persists between calls)
-- `ssh_disconnect` — Close the session and free resources
-- `ssh_info` — Check connection status, uptime, and queue state
-- `ssh_upload` — Transfer a local file to the remote host
-- `ssh_download` — Transfer a remote file to the local machine
+| Need | Tool | Permission behavior |
+| --- | --- | --- |
+| Check connection state | `ssh_info` | No remote operation |
+| Open or replace a connection | `ssh_connect` | Requests `ssh_connect` for the exact host |
+| Run a remote command | `ssh` | Requests `bash` for the exact command |
+| Send a local file | `ssh_upload` | Requests local `read`, then remote `edit` |
+| Receive a remote file | `ssh_download` | Requests remote `read`, then local `edit` |
+| End the connection | `ssh_disconnect` | Closes only the current OpenCode session's SSH process |
 
-## When to use me
+A local transfer path outside the worktree also requests `external_directory`.
 
-Load this skill when you need to:
-- Work with remote servers (deploying, debugging, monitoring)
-- Transfer files between local and remote machines
-- Manage remote services or processes
-- Set up or configure remote environments
+## Before a remote operation
 
-## Connection management
+1. Call `ssh_info` when the current session's connection state is unknown.
+2. Confirm that the active host is the intended target. Use `ssh_connect` to replace it when needed.
+3. Decide whether later commands depend on `cd`, exported variables, or other shell state.
+4. Use the transfer tools instead of embedding file contents or model-provided paths in shell
+   commands.
 
-- Always check with `ssh_info` before assuming a session exists
-- Each OpenCode session has an independent SSH connection
-- Connect once and reuse the connection to preserve `cd`, exported variables, and shell state
-- Connection approval uses the `ssh_connect` permission
-- First-time host keys use OpenSSH `accept-new`; changed keys are rejected
-- Password, passphrase, and keyboard-interactive authentication are unsupported; use key-based authentication or an SSH agent
-- Disconnect when done to release the SSH process
-- If a command is aborted, times out, or loses its stream, reconnect with `ssh_connect`
+Permission rejection is final for that attempt. Report it and stop. Do not retry the same operation
+through another tool or a differently spelled command.
 
-## Permission behavior
+## Connection behavior
 
-- Remote commands use the native `bash` permission with the exact command as the resource
-- Uploads request `read` for the local source and `edit` for the remote destination
-- Downloads request `read` for the remote source and `edit` for the local destination
-- Local paths outside the worktree also request `external_directory`
-- If a permission is denied, report the denial and stop; do not retry through `bash`, `scp`, `sftp`, or `rsync`
+- First-time keys use OpenSSH `accept-new`. Changed host keys are rejected.
+- Password, passphrase, keyboard-interactive, and TUI prompts are unavailable because SSH runs in
+  batch mode without a terminal.
+- An abort, command timeout, stream closure, or connection error closes the current SSH session.
+  Reconnect before relying on prior shell state.
+- Other OpenCode sessions keep their own independent connections.
 
-## Command execution rules
+## Command boundaries
 
-- **Never run interactive commands**: `vim`, `nano`, `top`, `htop`, `less`, `more`, `man`, `ssh` (nested)
-- **Use non-interactive alternatives**: `cat` instead of `less`, `ps aux` instead of `top`, `sed`/`awk` instead of `vim`
-- **Long-running commands**: set the `timeout` parameter or use `nohup` when the process must outlive the SSH session
-- **Multiple commands**: chain with `&&` or `;` in one `ssh` call when they require shared shell state
-- **Error handling**: non-zero exit codes are included in tool output
+Use one `ssh` call when commands must succeed as a unit or share immediate state:
 
-## File transfer patterns
-
-**Small files (< 1MB):** Use `ssh_upload` / `ssh_download` — they use base64 over the existing connection.
-
-**Creating files on remote:** For small content, pipe through `ssh`:
-```
-echo 'content' > /path/to/file
+```sh
+cd /srv/app && git pull --ff-only && make build
 ```
 
-**Reading remote files:** Use `ssh` with `cat`:
-```
-cat /path/to/file
-```
+Use separate calls when later work needs to inspect output before deciding what to do. Persistent
+state means a successful `cd` or `export` remains active for the next call.
 
-**Large files (> 1MB):** The base64 encoding adds ~33% overhead. For very large files, suggest the user use `scp` or `rsync` directly outside of OpenCode.
+Non-zero exit codes appear in tool output. Diagnose the failure before retrying. Do not reconnect
+unless the session itself was closed.
 
-## Deployment workflow
+## Transfers
 
-1. `ssh_info` — verify connection or `ssh_connect` if needed
-2. `ssh` — navigate to project dir and pull latest code
-3. `ssh` — install dependencies and build
-4. `ssh` — restart services (`systemctl restart`, `pm2 restart`, etc.)
-5. `ssh` — verify service is running (`curl localhost:PORT`, `systemctl status`)
-6. `ssh_disconnect` — clean up when done
+Use `ssh_upload` and `ssh_download` for bounded files. They preserve arbitrary remote filenames and
+transfer bytes through base64 over the active connection.
 
-## Debugging remote services
+Base64 adds about one third overhead. For large files, tell the user to run `scp` or `rsync` outside
+OpenCode rather than sending a large payload through the model-driven session.
 
-1. Check service status: `systemctl status <service>`
-2. View recent logs: `journalctl -u <service> -n 50 --no-pager`
-3. Check ports: `ss -tlnp` or `netstat -tlnp`
-4. Check resources: `df -h`, `free -m`, `ps aux --sort=-%mem | head`
-5. Check connectivity: `curl -v localhost:<port>`
+## Failure recovery
 
-## Common pitfalls to avoid
+| Signal | Response |
+| --- | --- |
+| `No active SSH session` | Call `ssh_connect`, then retry only after approval |
+| Permission denied by OpenCode | Stop and report the denied permission and resource |
+| Authentication failure on connect | Ask the user to configure key-based auth or an SSH agent |
+| Host identification changed | Stop; do not bypass host verification |
+| Command timeout or dropped stream | Treat shell state as lost, reconnect, and re-establish required state |
+| Non-zero command exit | Keep the connection and diagnose from the returned output |
 
-- Do not run `sudo` commands that require a password prompt — they will hang
-- Do not start background processes without `nohup` — they die when the session closes
-- Do not assume the remote OS or package manager — check with `uname -a` and `which apt yum dnf brew` first
-- Do not pipe large binary output through the session — it may corrupt or timeout
+## NEVER
+
+- **NEVER bypass a denied plugin tool with built-in `bash`, nested `ssh`, `scp`, `sftp`, or
+  `rsync`.** That substitutes a different execution path for a rejected permission decision.
+- **NEVER run `vim`, `nano`, `top`, `less`, password-requiring `sudo`, or another interactive
+  program.** The connection has no terminal and cannot answer prompts.
+- **NEVER assume shell state survived an abort, timeout, or dropped stream.** Those failures close
+  the persistent connection by design.
+- **NEVER disable host-key checking to make a connection succeed.** First-time keys are already
+  handled by `accept-new`; a changed key is a security failure requiring user investigation.
+- **NEVER start a process that must outlive the session without explicit detachment and redirected
+  output.** Closing SSH otherwise terminates or strands the process with unusable stdio.
